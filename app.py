@@ -7,8 +7,8 @@ st.set_page_config(page_title="Maven Bookshelf", layout="wide")
 # Load data
 @st.cache_data
 def load_data():
-    df = pd.read_csv("/Users/poojam/Downloads/maven_bookshelf_app/goodreads_works.csv
-poojam@Poojas-MacBook-Air maven_bookshelf_app %")
+    df = pd.read_csv(/Users/poojam/Downloads/maven_bookshelf_app/goodreads_works.csv
+poojam@Poojas-MacBook-Air maven_bookshelf_app %)
     return df
 
 df = load_data()
