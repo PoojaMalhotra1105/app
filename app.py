@@ -1,59 +1,75 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
+import altair as alt
 
-# Load dataset
-df = pd.read_csv("goodreads_works 1.csv")
+st.set_page_config(page_title="Maven Bookshelf", layout="wide")
 
-# Preprocess
-df['genres'] = df['genres'].fillna('')
-df['original_publication_year'] = pd.to_numeric(df['original_publication_year'], errors='coerce')
-df['avg_rating'] = pd.to_numeric(df['avg_rating'], errors='coerce')
+# Load data
+@st.cache_data
+def load_data():
+    df = pd.read_csv("goodreads_works.csv")
+    return df
 
-# Sidebar filters
-st.sidebar.header("📚 Filter Your Reading List")
-all_genres = sorted(set(g.strip() for sublist in df['genres'].dropna().str.split(',') for g in sublist))
-selected_genre = st.sidebar.selectbox("Select Genre", all_genres)
-min_rating = st.sidebar.slider("Minimum Rating", 1.0, 5.0, 3.5, 0.1)
-year_range = st.sidebar.slider("Publication Year Range", int(df['original_publication_year'].min()), int(df['original_publication_year'].max()), (2000, 2020))
+df = load_data()
 
-# Filtered data
+# Clean missing titles
+df = df[df["title"].notna()]
+
+# Sidebar Filters
+st.sidebar.header("🔍 Filter Books")
+min_rating = st.sidebar.slider("Minimum average rating", 0.0, 5.0, 3.5, 0.1)
+min_reviews = st.sidebar.slider("Minimum number of ratings", 0, 1000000, 1000, step=1000)
+title_search = st.sidebar.text_input("Search by book title")
+
+# Filter data
 filtered_df = df[
-    df['genres'].str.contains(selected_genre, case=False) &
-    (df['avg_rating'] >= min_rating) &
-    (df['original_publication_year'] >= year_range[0]) &
-    (df['original_publication_year'] <= year_range[1])
+    (df["average_rating"] >= min_rating) &
+    (df["ratings_count"] >= min_reviews)
 ]
 
-# App title
-st.title("📖 Books, Reviews & Insights")
-st.markdown("Explore Goodreads data and build your perfect summer reading list!")
+if title_search:
+    filtered_df = filtered_df[filtered_df["title"].str.contains(title_search, case=False)]
 
-# Book selection
-st.subheader("🎯 Recommended Books")
-selected_books = st.multiselect("Select books to add to your reading list", filtered_df['original_title'].dropna().unique())
-reading_list = filtered_df[filtered_df['original_title'].isin(selected_books)]
+# Title
+st.title("📚 Maven Bookshelf Explorer")
 
-st.write(reading_list[['original_title', 'author', 'avg_rating', 'original_publication_year', 'genres']])
+st.markdown("Explore Goodreads books data from the Maven Challenge. Use the sidebar to filter books by rating, reviews, or search by title.")
 
-# Export reading list
-if not reading_list.empty:
-    st.download_button("📥 Export Reading List as CSV", reading_list.to_csv(index=False), "reading_list.csv", "text/csv")
+# Show top results
+st.subheader("📘 Top Books")
+st.write(f"Showing {filtered_df.shape[0]} books matching your criteria.")
+st.dataframe(
+    filtered_df[["title", "authors", "average_rating", "ratings_count"]]
+    .sort_values(by="average_rating", ascending=False)
+    .head(20),
+    use_container_width=True
+)
 
-# Charts
-st.subheader("📊 Top Genres")
-genre_counts = pd.Series([g.strip() for sublist in df['genres'].dropna().str.split(',') for g in sublist]).value_counts().head(15)
-fig1, ax1 = plt.subplots()
-genre_counts.plot(kind='barh', ax=ax1)
-ax1.set_xlabel("Number of Books")
-ax1.set_ylabel("Genre")
-ax1.set_title("Top 15 Genres by Book Count")
-st.pyplot(fig1)
+# Top Authors
+st.subheader("👩‍💻 Top Authors by Average Rating")
+top_authors = (
+    filtered_df.groupby("authors")["average_rating"]
+    .mean()
+    .sort_values(ascending=False)
+    .head(10)
+    .reset_index()
+)
 
-st.subheader("💬 Most Reviewed Books")
-most_reviewed = df[['original_title', 'text_reviews_count']].dropna().sort_values(by='text_reviews_count', ascending=False).head(10)
-fig2, ax2 = plt.subplots()
-ax2.barh(most_reviewed['original_title'], most_reviewed['text_reviews_count'])
-ax2.set_xlabel("Text Reviews Count")
-ax2.set_title("Top 10 Most Reviewed Books")
-st.pyplot(fig2)
+chart = alt.Chart(top_authors).mark_bar().encode(
+    x=alt.X("average_rating:Q", title="Average Rating"),
+    y=alt.Y("authors:N", sort="-x", title="Author"),
+    tooltip=["authors", "average_rating"]
+).properties(height=400)
+
+st.altair_chart(chart, use_container_width=True)
+
+# Ratings distribution
+st.subheader("📈 Ratings Distribution")
+hist = alt.Chart(filtered_df).mark_bar().encode(
+    alt.X("average_rating:Q", bin=alt.Bin(maxbins=30), title="Average Rating"),
+    alt.Y("count()", title="Number of Books"),
+    tooltip=["count()"]
+).properties(height=300)
+
+st.altair_chart(hist, use_container_width=True)
+
